@@ -13,7 +13,7 @@ Ktorm 提供了许多扩展函数，用来从数据库中获取实体对象，�
 我们首先来看看 `findList` 函数，它是 `Table` 类的扩展函数，签名如下：
 
 ````kotlin
-inline fun <E : Entity<E>, T : Table<E>> T.findList(predicate: (T) -> ColumnDeclaring<Boolean>): List<E>
+inline fun <E : Any, T : BaseTable<E>> T.findList(predicate: (T) -> ColumnDeclaring<Boolean>): List<E>
 ````
 
 这个函数接受一个闭包作为参数，使用闭包中返回的 `ColumnDeclaring<Boolean>` 作为查询的筛选条件，SQL 执行完毕后，从结果集中创建一个实体对象的列表并返回。作为参数的闭包函数本身也接收一个参数 `T`，这正是当前表对象，因此我们能在闭包中使用 it 引用它。获取部门 1 中所有员工的代码如下：
@@ -94,7 +94,7 @@ val employees = Employees
 employees.forEach { println(it) }
 ```
 
-`Query` 对象实现了 `Iterable<QueryRowSet>` 接口，在这里，我们使用 `map` 函数对查询进行迭代，在迭代中使用 `createEntity` 为每一行返回的记录创建一个实体对象。`createEntity` 是 `Table` 类的扩展函数，它会根据表对象中的列绑定配置，自动创建实体对象，从结果集中读取数据填充到实体对象的各个属性中。如果该表使用 `references` 引用绑定了其它表，也会递归地对所引用的表调用 `createEntity` 创建关联的实体对象。
+`Query` 对象实现了 `Iterable<QueryRowSet>` 接口，在这里，我们使用 `map` 函数对查询进行迭代，在迭代中使用 `createEntity` 为每一行返回的记录创建一个实体对象。`createEntity` 是 `Table` 类的函数，它会根据表对象中的列绑定配置，自动创建实体对象，从结果集中读取数据填充到实体对象的各个属性中。如果该表使用 `references` 引用绑定了其它表，也会递归地对所引用的表调用 `createEntity` 创建关联的实体对象。
 
 查询 DSL 返回的列是可自定义的，里面不一定包含引用表中的列。针对这种情况，Ktorm 2.0 及以上版本提供了 `createEntityWithoutReferences` 函数，它的功能是一样的，但是不会自动获取引用表关联的实体对象的数据。它把引用绑定视为到其所引用的实体对象的主键的嵌套绑定，例如 `c.references(Departments) { it.department }`，在它眼里相当于 `c.bindTo { it.department.id }`，因此避免了不必要的对象创建和一些因列名冲突导致的异常。
 

@@ -13,7 +13,7 @@ Ktorm provides many extension functions to obtain entity objects from databases,
 Let's discuss `findList` function fist, it's an extension function of `Table` class, and its signature is given as follows: 
 
 ```kotlin
-inline fun <E : Entity<E>, T : Table<E>> T.findList(predicate: (T) -> ColumnDeclaring<Boolean>): List<E>
+inline fun <E : Any, T : BaseTable<E>> T.findList(predicate: (T) -> ColumnDeclaring<Boolean>): List<E>
 ```
 
 This function accepts a closure as its parameter, executes a query with the filter condition returned by the closure, then returns a list of entity objects obtained from the result set. The closure function also accepts a parameter of type `T`, which is the current table object, so we can use `it` to access the table in the closure. The code obtaining all employees in department 1: 
@@ -94,7 +94,7 @@ val employees = Employees
 employees.forEach { println(it) }
 ```
 
-`Query` implements the `Iterable<QueryRowSet>` interface, so we can use the Kotlin built-in `map` function to iterate it and create an entity object from the result set via `createEntity` for each row. `createEntity` is an extension function of `Table` class, it will create an entity object from the result set, using the binding configurations in the table object, filling columns' values into corresponding entities' properties. And if there are any reference bindings to other tables, it will also create the referenced entity objects recursively. 
+`Query` implements the `Iterable<QueryRowSet>` interface, so we can use the Kotlin built-in `map` function to iterate it and create an entity object from the result set via `createEntity` for each row. `createEntity` is a function of `Table` class, it will create an entity object from the result set, using the binding configurations in the table object, filling columns' values into corresponding entities' properties. And if there are any reference bindings to other tables, it will also create the referenced entity objects recursively. 
 
 The selected columns in query DSL are customizable, and there may be no columns from referenced tables. In this case, Ktorm provides a `createEntityWithoutReferences` function since version 2.0, which do the same thing as `createEntity`. But it doesn't obtain referenced entities' data automatically. It treats all reference bindings as nested bindings to the referenced entities' primary keys. For example the binding `c.references(Departments) { it.department }`, it is equivalent to `c.bindTo { it.department.id }` for it, that avoids unnecessary object creations and some exceptions raised by conflict column names. 
 

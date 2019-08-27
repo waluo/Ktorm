@@ -16,13 +16,11 @@
 
 package me.liuwj.ktorm.entity
 
-import me.liuwj.ktorm.database.Database
 import me.liuwj.ktorm.dsl.*
 import me.liuwj.ktorm.expression.BinaryExpression
 import me.liuwj.ktorm.expression.BinaryExpressionType
 import me.liuwj.ktorm.expression.QuerySourceExpression
 import me.liuwj.ktorm.schema.*
-import kotlin.reflect.jvm.jvmErasure
 
 /**
  * Obtain a map of entity objects by IDs, auto left joining all the reference tables.
@@ -36,7 +34,7 @@ fun <E : Entity<E>, K : Any> Table<E>.findMapByIds(ids: Collection<K>): Map<K, E
  * Obtain a list of entity objects by IDs, auto left joining all the reference tables.
  */
 @Suppress("UNCHECKED_CAST")
-fun <E : Entity<E>> Table<E>.findListByIds(ids: Collection<Any>): List<E> {
+fun <E : Any> BaseTable<E>.findListByIds(ids: Collection<Any>): List<E> {
     if (ids.isEmpty()) {
         return emptyList()
     } else {
@@ -51,7 +49,7 @@ fun <E : Entity<E>> Table<E>.findListByIds(ids: Collection<Any>): List<E> {
  * This function will return `null` if no records found, and throw an exception if there are more than one record.
  */
 @Suppress("UNCHECKED_CAST")
-fun <E : Entity<E>> Table<E>.findById(id: Any): E? {
+fun <E : Any> BaseTable<E>.findById(id: Any): E? {
     val primaryKey = this.primaryKey as? Column<Any> ?: error("Table $tableName doesn't have a primary key.")
     return findOne { primaryKey eq id }
 }
@@ -61,7 +59,7 @@ fun <E : Entity<E>> Table<E>.findById(id: Any): E? {
  *
  * This function will return `null` if no records found, and throw an exception if there are more than one record.
  */
-inline fun <E : Entity<E>, T : Table<E>> T.findOne(predicate: (T) -> ColumnDeclaring<Boolean>): E? {
+inline fun <E : Any, T : BaseTable<E>> T.findOne(predicate: (T) -> ColumnDeclaring<Boolean>): E? {
     val list = findList(predicate)
     when (list.size) {
         0 -> return null
@@ -73,7 +71,7 @@ inline fun <E : Entity<E>, T : Table<E>> T.findOne(predicate: (T) -> ColumnDecla
 /**
  * Obtain all the entity objects from this table, auto left joining all the reference tables.
  */
-fun <E : Entity<E>> Table<E>.findAll(): List<E> {
+fun <E : Any> BaseTable<E>.findAll(): List<E> {
     // return this.asSequence().toList()
     return this
         .joinReferencesAndSelect()
@@ -83,7 +81,7 @@ fun <E : Entity<E>> Table<E>.findAll(): List<E> {
 /**
  * Obtain a list of entity objects matching the given [predicate], auto left joining all the reference tables.
  */
-inline fun <E : Entity<E>, T : Table<E>> T.findList(predicate: (T) -> ColumnDeclaring<Boolean>): List<E> {
+inline fun <E : Any, T : BaseTable<E>> T.findList(predicate: (T) -> ColumnDeclaring<Boolean>): List<E> {
     // return this.asSequence().filter(predicate).toList()
     return this
         .joinReferencesAndSelect()
@@ -94,17 +92,17 @@ inline fun <E : Entity<E>, T : Table<E>> T.findList(predicate: (T) -> ColumnDecl
 /**
  * Return a new-created [Query] object, left joining all the reference tables, and selecting all columns of them.
  */
-fun Table<*>.joinReferencesAndSelect(): Query {
-    val joinedTables = ArrayList<Table<*>>()
+fun BaseTable<*>.joinReferencesAndSelect(): Query {
+    val joinedTables = ArrayList<BaseTable<*>>()
 
     return this
         .joinReferences(this.asExpression(), joinedTables)
         .select(joinedTables.flatMap { it.columns })
 }
 
-private fun Table<*>.joinReferences(
+private fun BaseTable<*>.joinReferences(
     expr: QuerySourceExpression,
-    joinedTables: MutableList<Table<*>>
+    joinedTables: MutableList<BaseTable<*>>
 ): QuerySourceExpression {
 
     var curr = expr
@@ -114,11 +112,11 @@ private fun Table<*>.joinReferences(
     for (column in columns) {
         val binding = column.binding
         if (binding is ReferenceBinding) {
-            val rightTable = binding.referenceTable
-            val primaryKey = rightTable.primaryKey ?: error("Table ${rightTable.tableName} doesn't have a primary key.")
+            val refTable = binding.referenceTable
+            val primaryKey = refTable.primaryKey ?: error("Table ${refTable.tableName} doesn't have a primary key.")
 
-            curr = curr.leftJoin(rightTable, on = column eq primaryKey)
-            curr = rightTable.joinReferences(curr, joinedTables)
+            curr = curr.leftJoin(refTable, on = column eq primaryKey)
+            curr = refTable.joinReferences(curr, joinedTables)
         }
     }
 
@@ -127,91 +125,4 @@ private fun Table<*>.joinReferences(
 
 private infix fun ColumnDeclaring<*>.eq(column: ColumnDeclaring<*>): BinaryExpression<Boolean> {
     return BinaryExpression(BinaryExpressionType.EQUAL, asExpression(), column.asExpression(), BooleanSqlType)
-}
-
-/**
- * Create an entity object from the specific row of [Query] results.
- *
- * This function uses the binding configurations of this table object, filling columns' values into corresponding
- * entities' properties. And if there are any reference bindings to other tables, it will also create the referenced
- * entity objects recursively.
- */
-@Suppress("UNCHECKED_CAST")
-fun <E : Entity<E>> Table<E>.createEntity(row: QueryRowSet): E {
-    val entity = doCreateEntity(row, skipReferences = false) as E
-    entity.clearChangesRecursively()
-
-    val logger = Database.global.logger
-    if (logger != null && logger.isTraceEnabled()) {
-        logger.trace("Entity: $entity")
-    }
-
-    return entity
-}
-
-/**
- * Create an entity object from the specific row without obtaining referenced entities' data automatically.
- *
- * Similar to [Table.createEntity], this function uses the binding configurations of this table object, filling
- * columns' values into corresponding entities' properties. But differently, it treats all reference bindings
- * as nested bindings to the referenced entities’ primary keys.
- *
- * For example the binding `c.references(Departments) { it.department }`, it is equivalent to
- * `c.bindTo { it.department.id }` for this function, that avoids unnecessary object creations and
- * some exceptions raised by conflict column names.
- */
-@Suppress("UNCHECKED_CAST")
-fun <E : Entity<E>> Table<E>.createEntityWithoutReferences(row: QueryRowSet): E {
-    val entity = doCreateEntity(row, skipReferences = true) as E
-    entity.clearChangesRecursively()
-
-    val logger = Database.global.logger
-    if (logger != null && logger.isTraceEnabled()) {
-        logger.trace("Entity: $entity")
-    }
-
-    return entity
-}
-
-private fun Table<*>.doCreateEntity(row: QueryRowSet, skipReferences: Boolean = false): Entity<*> {
-    val entityClass = this.entityClass ?: error("No entity class configured for table: $tableName")
-    val entity = Entity.create(entityClass, fromTable = this)
-
-    for (column in columns) {
-        try {
-            row.retrieveColumn(column, intoEntity = entity, skipReferences = skipReferences)
-        } catch (e: Throwable) {
-            throw IllegalStateException("Error occur while retrieving column: $column, binding: ${column.binding}", e)
-        }
-    }
-
-    return entity
-}
-
-private fun QueryRowSet.retrieveColumn(column: Column<*>, intoEntity: Entity<*>, skipReferences: Boolean) {
-    val columnValue = (if (this.hasColumn(column)) this[column] else null) ?: return
-
-    val binding = column.binding ?: return
-    when (binding) {
-        is ReferenceBinding -> {
-            val rightTable = binding.referenceTable
-            val primaryKey = rightTable.primaryKey ?: error("Table ${rightTable.tableName} doesn't have a primary key.")
-
-            when {
-                skipReferences -> {
-                    val child = Entity.create(binding.onProperty.returnType.jvmErasure, fromTable = rightTable)
-                    child.implementation.setColumnValue(primaryKey, columnValue)
-                    intoEntity[binding.onProperty.name] = child
-                }
-                this.hasColumn(primaryKey) && this[primaryKey] != null -> {
-                    val child = rightTable.doCreateEntity(this)
-                    child.implementation.setColumnValue(primaryKey, columnValue, forceSet = true)
-                    intoEntity[binding.onProperty.name] = child
-                }
-            }
-        }
-        is NestedBinding -> {
-            intoEntity.implementation.setColumnValue(column, columnValue)
-        }
-    }
 }

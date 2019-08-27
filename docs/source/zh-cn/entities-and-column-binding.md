@@ -30,9 +30,9 @@ interface Employee : Entity<Employee> {
 }
 ```
 
-可以看到，Ktorm 中的实体类都继承了 `Entity<E>` 接口，这个接口为实体类注入了一些通用的方法。实体类的属性则使用 var 或 val 关键字直接定义即可，根据需要确定属性的类型及是否为空。
+可以看到，Ktorm 中的实体类都继承了 `Entity<E>` 接口，这个接口为实体类注入了一些通用的方法。实体类的属性则使用 var 或 val 关键字直接定义即可，根据需要确定属性的类型及是否为空。有一点可能会违背你的直觉，Ktorm 中的实体类并不是 data class，甚至也不是一个普通的 class，而是 interface。这是 Ktorm 的设计要求，通过将实体类定义为 interface，Ktorm 才能够实现一些特别的功能，以后你会了解到它的意义。
 
-有一点可能会违背你的直觉，Ktorm 中的实体类并不是 data class，甚至也不是一个普通的 class，而是 interface。这是 Ktorm 的设计要求，通过将实体类定义为 interface，Ktorm 才能够实现一些特别的功能，以后你会了解到它的意义。
+> 从 Ktorm 2.5 版本开始，我们也支持使用 data class 或其他任意的类定义实体类，参见[使用任意的类作为实体类](/zh-cn/define-entities-as-any-kind-of-classes.html)。
 
 众所周知，接口并不能被实例化，既然实体类被定义为接口，我们要如何才能创建一个实体对象呢？Ktorm 提供了一个 `Entity.create` 函数，这个函数会使用 JDK 动态代理生成实体类接口的实现，并为我们创建一个实体对象。要创建一个部门对象，可以这样写：
 
@@ -122,7 +122,7 @@ object Foos : Table<Foo>("t_foo") {
 
 ## 关于 Entity 接口
 
-前面提到，Ktorm 规定，所有的实体类的应该定义为 interface，并且继承 `Entity` 接口，而实体对象的创建，则是使用 JDK 动态代理完成的。如果你对 JDK 的动态代理有所了解，你应该知道，代理对象是通过 `Proxy.newProxyInstance` 方法创建的，提供一个 `InvocationHandler` 实例作为参数，所有对接口方法的调用，都会被 JDK 代理到这个 handler 中。在 Ktorm 内部，`EntityImplementation` 就是这个 handler 的实现，它被声明为 internal，因此你无法在 Ktorm 外部使用它，但是我们可以了解一下它的基本原理。
+前面提到，Ktorm 规定，所有的实体类都应该定义为 interface，并且继承 `Entity` 接口，而实体对象的创建，则是使用 JDK 动态代理完成的。如果你对 JDK 的动态代理有所了解，你应该知道，代理对象是通过 `Proxy.newProxyInstance` 方法创建的，提供一个 `InvocationHandler` 实例作为参数，所有对接口方法的调用，都会被 JDK 代理到这个 handler 中。在 Ktorm 内部，`EntityImplementation` 就是这个 handler 的实现，它被声明为 internal，因此你无法在 Ktorm 外部使用它，但是我们可以了解一下它的基本原理。
 
 ### 属性存取
 
